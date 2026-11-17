@@ -1,9 +1,10 @@
 name: Unity PR Validation
 
 on:
-  pull_request:
+  push:
     branches:
       - main
+
   workflow_dispatch:
 
 jobs:
@@ -14,14 +15,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Show Docker Version
-        run: docker version
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Show Docker Compose Version
-        run: docker compose version
+      - name: Build Unity Image
+        run: |
+          docker buildx build \
+            --load \
+            --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
+            --build-arg=FRAPPE_BRANCH=version-16 \
+            --secret=id=apps_json,src=apps.json \
+            --tag=piyush/erpnext-custom:16 \
+            --file=images/custom/Containerfile .
 
-      - name: Verify Manifest Exists
-        run: cat manifest.json
-
-      - name: Verify Apps JSON Exists
-        run: cat apps.json
+      - name: Verify Image Exists
+        run: |
+          docker images | grep piyush/erpnext-custom
