@@ -35,3 +35,15 @@ jobs:
       - name: Verify Bench Exists
         run: |
           docker run --rm piyush/erpnext-custom:16 bench version
+
+      - name: Verify Installed Apps
+        run: |
+          docker run --rm piyush/erpnext-custom:16 bench version | tee versions.txt
+
+          grep frappe versions.txt
+          grep erpnext versions.txt
+          grep hrms versions.txt
+          grep helpdesk versions.txt
+          grep insights versions.txt
+          grep builder versions.txt
+          grep lms versions.txt
