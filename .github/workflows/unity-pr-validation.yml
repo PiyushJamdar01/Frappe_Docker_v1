@@ -72,3 +72,29 @@ jobs:
       - name: Show Running Containers
         run: |
           docker compose ps
+
+      - name: Wait For Backend Startup
+        run: |
+          sleep 60
+
+      - name: List Installed Apps From Site
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost list-apps
+
+      - name: Validate Site Health
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost doctor
