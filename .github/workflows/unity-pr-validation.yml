@@ -77,6 +77,30 @@ jobs:
         run: |
           sleep 60
 
+      - name: Create Test Site
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench new-site erp.localhost \
+            --mariadb-root-password 123 \
+            --admin-password Admin@123
+
+      - name: Install ERPNext
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost install-app erpnext
+
       - name: List Installed Apps From Site
         run: |
           docker compose \
