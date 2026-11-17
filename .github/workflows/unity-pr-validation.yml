@@ -47,3 +47,28 @@ jobs:
           grep insights versions.txt
           grep builder versions.txt
           grep lms versions.txt
+
+      - name: Create Environment File
+        run: |
+          cat > .env <<EOF
+          ERPNEXT_VERSION=v16.53.0
+          DB_PASSWORD=123
+          HTTP_PUBLISH_PORT=8080
+          CUSTOM_IMAGE=piyush/erpnext-custom
+          CUSTOM_TAG=16
+          PULL_POLICY=never
+          EOF
+
+      - name: Start Compose Stack
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            up -d
+
+      - name: Show Running Containers
+        run: |
+          docker compose ps
