@@ -1,0 +1,11 @@
+{
+  "frappe": "16.55.2",
+  "erpnext": "16.53.0",
+  "hrms": "16.53.1",
+  "helpdesk": "16.1.0",
+  "builder": "1.22.5",
+  "insights": "3.15.1",
+  "payments": "0.0.1",
+  "telephony": "0.0.1",
+  "lms": "16.0.0"
+}
