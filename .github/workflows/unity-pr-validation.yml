@@ -122,3 +122,14 @@ jobs:
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
             bench --site erp.localhost doctor
+
+      - name: Run Migration Test
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost migrate
