@@ -31,3 +31,7 @@ jobs:
       - name: Verify Image Exists
         run: |
           docker images | grep piyush/erpnext-custom
+
+      - name: Verify Bench Exists
+        run: |
+          docker run --rm piyush/erpnext-custom:16 bench version
