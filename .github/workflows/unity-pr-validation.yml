@@ -36,7 +36,7 @@ jobs:
         run: |
           docker run --rm piyush/erpnext-custom:16 bench version
 
-      - name: Verify Installed Apps
+      - name: Verify Installed Apps In Image
         run: |
           docker run --rm piyush/erpnext-custom:16 bench version | tee versions.txt
 
@@ -101,7 +101,62 @@ jobs:
             exec -T backend \
             bench --site erp.localhost install-app erpnext
 
-      - name: List Installed Apps From Site
+      - name: Install HRMS
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost install-app hrms
+
+      - name: Install Helpdesk
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost install-app helpdesk
+
+      - name: Install Builder
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost install-app builder
+
+      - name: Install Insights
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost install-app insights
+
+      - name: Install LMS
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost install-app lms
+
+      - name: List Installed Apps
         run: |
           docker compose \
             --env-file .env \
@@ -123,7 +178,7 @@ jobs:
             exec -T backend \
             bench --site erp.localhost doctor
 
-      - name: Run Migration Test
+      - name: Full Stack Migration Test
         run: |
           docker compose \
             --env-file .env \
