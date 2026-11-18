@@ -1,10 +1,15 @@
 name: Unity Release
 
 on:
-  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Unity PR Validation
+    types:
+      - completed
 
 jobs:
   release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     permissions:
