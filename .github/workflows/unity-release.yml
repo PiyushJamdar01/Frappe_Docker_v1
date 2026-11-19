@@ -33,17 +33,25 @@ jobs:
         run: |
           echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Build and Push Image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: images/custom/Containerfile
-          push: true
-          build-args: |
-            FRAPPE_PATH=https://github.com/frappe/frappe
-            FRAPPE_BRANCH=version-16
-          secrets: |
-            apps_json=${{ github.workspace }}/apps.json
-          tags: |
-            piyush2880/erpnext-custom:latest
-            piyush2880/erpnext-custom:${{ steps.vars.outputs.sha_short }}
+      - name: Build Release Image
+        run: |
+          docker buildx build \
+            --load \
+            --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
+            --build-arg=FRAPPE_BRANCH=version-16 \
+            --secret=id=apps_json,src=apps.json \
+            --tag=piyush2880/erpnext-custom:latest \
+            --tag=piyush2880/erpnext-custom:${{ steps.vars.outputs.sha_short }} \
+            --file=images/custom/Containerfile .
+
+      - name: Verify Image
+        run: |
+          docker run --rm piyush2880/erpnext-custom:latest bench version
+
+      - name: Push Latest Tag
+        run: |
+          docker push piyush2880/erpnext-custom:latest
+
+      - name: Push Commit SHA Tag
+        run: |
+          docker push piyush2880/erpnext-custom:${{ steps.vars.outputs.sha_short }}
