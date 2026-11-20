@@ -25,7 +25,7 @@
   },
   {
     "url": "https://github.com/frappe/builder",
-    "branch": "v1.36.2"
+    "branch": "master"
   },
   {
     "url": "https://github.com/frappe/insights",
