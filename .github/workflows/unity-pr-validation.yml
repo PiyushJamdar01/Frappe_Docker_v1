@@ -226,7 +226,12 @@ jobs:
         if: failure()
         run: |
           echo "===== BACKEND LOGS ====="
-          docker compose logs backend
+          docker compose logs --tail=300 backend
 
           echo "===== FRONTEND LOGS ====="
-          docker compose logs frontend
+          docker compose logs --tail=300 frontend
+
+          echo "===== DESK RESPONSE ====="
+          curl -v \
+            -H "Host: erp.localhost" \
+            http://localhost:8080/app || true
