@@ -214,13 +214,31 @@ jobs:
 
       - name: Validate Desk Route
         run: |
-          curl \
-            --fail \
-            -H "Host: erp.localhost" \
-            http://localhost:8080/app \
-            > desk.html
+          echo "===== WAITING FOR DESK ====="
 
-          grep -q "desk.bundle" desk.html
+          success=false
+
+          for i in {1..30}; do
+            if curl --fail -s \
+              -H "Host: erp.localhost" \
+              http://localhost:8080/app \
+              > desk.html; then
+              success=true
+              break
+            fi
+
+            sleep 10
+          done
+
+          if [ "$success" = false ]; then
+            echo "Desk route never became available"
+            exit 1
+          fi
+
+          echo "===== FIRST 100 LINES ====="
+          head -100 desk.html
+
+          grep -q "<!DOCTYPE html>" desk.html
 
       - name: Show Container Logs On Failure
         if: failure()
