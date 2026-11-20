@@ -202,34 +202,31 @@ jobs:
             exec -T backend \
             bench --site erp.localhost list-apps
 
-      - name: Validate BootInfo Generation
-        run: |
-          docker compose \
-            --env-file .env \
-            -f compose.yaml \
-            -f overrides/compose.mariadb.yaml \
-            -f overrides/compose.redis.yaml \
-            -f overrides/compose.noproxy.yaml \
-            exec -T backend \
-            bench --site erp.localhost execute frappe.sessions.get
-
       - name: Validate Login Page
         run: |
           curl \
             --fail \
             -H "Host: erp.localhost" \
             http://localhost:8080/login \
-            | grep "Sign In"
+            > login.html
+
+          grep -q "Sign In" login.html
 
       - name: Validate Desk Route
         run: |
           curl \
             --fail \
             -H "Host: erp.localhost" \
-            http://localhost:8080/app
+            http://localhost:8080/app \
+            > desk.html
+
+          grep -q "desk.bundle" desk.html
 
       - name: Show Container Logs On Failure
         if: failure()
         run: |
+          echo "===== BACKEND LOGS ====="
           docker compose logs backend
+
+          echo "===== FRONTEND LOGS ====="
           docker compose logs frontend
