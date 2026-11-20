@@ -48,6 +48,20 @@ jobs:
         run: |
           docker run --rm piyush2880/erpnext-custom:latest bench version
 
+      - name: Verify Required Apps
+        run: |
+          docker run --rm piyush2880/erpnext-custom:latest bench version | tee versions.txt
+
+          grep frappe versions.txt
+          grep erpnext versions.txt
+          grep hrms versions.txt
+          grep helpdesk versions.txt
+          grep builder versions.txt
+          grep insights versions.txt
+          grep lms versions.txt
+          grep payments versions.txt
+          grep telephony versions.txt
+
       - name: Push Latest Tag
         run: |
           docker push piyush2880/erpnext-custom:latest
