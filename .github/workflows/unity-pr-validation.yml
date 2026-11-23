@@ -219,9 +219,9 @@ jobs:
           success=false
 
           for i in $(seq 1 30); do
-            HTTP_CODE=$(curl -s -o desk.html -w "%{http_code}" \
+            HTTP_CODE=$(curl -L -sS -o desk.html -w "%{http_code}" \
               -H "Host: erp.localhost" \
-              http://localhost:8080/app || true)
+              http://localhost:8080/app/ || true)
 
             echo "Attempt $i HTTP Status: $HTTP_CODE"
 
@@ -250,15 +250,15 @@ jobs:
         if: failure()
         run: |
           echo "===== BACKEND LOGS ====="
-          docker compose logs --tail=300 backend
+          docker compose logs --tail=200 backend
 
           echo "===== FRONTEND LOGS ====="
-          docker compose logs --tail=300 frontend
+          docker compose logs --tail=200 frontend
 
-          echo "===== DB LOGS ====="
-          docker compose logs --tail=200 db
+          echo "===== CONFIGURATOR LOGS ====="
+          docker compose logs --tail=200 configurator
 
           echo "===== DESK RESPONSE ====="
-          curl -v \
+          curl -L -v \
             -H "Host: erp.localhost" \
-            http://localhost:8080/app || true
+            http://localhost:8080/app/ || true
