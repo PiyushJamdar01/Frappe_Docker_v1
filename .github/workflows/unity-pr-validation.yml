@@ -92,6 +92,17 @@ jobs:
             --mariadb-root-password 123 \
             --admin-password Admin@123
 
+      - name: Verify Redis Configuration
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            cat /home/frappe/frappe-bench/sites/common_site_config.json
+
       - name: Install ERPNext
         run: |
           docker compose \
