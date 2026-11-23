@@ -23,7 +23,7 @@ jobs:
           docker buildx build \
             --load \
             --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
-            --build-arg=FRAPPE_BRANCH=version-16 \
+            --build-arg=FRAPPE_BRANCH=v16.60.2 \
             --secret=id=apps_json,src=apps.json \
             --tag=piyush/erpnext-custom:16 \
             --file=images/custom/Containerfile .
@@ -53,7 +53,7 @@ jobs:
       - name: Create Environment File
         run: |
           cat > .env <<EOF
-          ERPNEXT_VERSION=v16.53.0
+          ERPNEXT_VERSION=v16.60.0
           DB_PASSWORD=123
           HTTP_PUBLISH_PORT=8080
           CUSTOM_IMAGE=piyush/erpnext-custom
@@ -158,6 +158,39 @@ jobs:
             exec -T backend \
             bench --site erp.localhost install-app lms
 
+      - name: Set Default Homepage To Desk
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost execute frappe.db.set_single_value \
+            --args "['Website Settings','home_page','desk']"
+
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost clear-cache
+
+      - name: Verify Homepage Is Desk
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost execute frappe.db.get_single_value \
+            --args "['Website Settings','home_page']"
+
       - name: List Installed Apps
         run: |
           docker compose \
@@ -202,6 +235,78 @@ jobs:
             exec -T backend \
             bench --site erp.localhost list-apps
 
+      - name: Validate ERPNext Doctype
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost execute frappe.db.exists \
+            --args "['DocType','Sales Order']"
+
+      - name: Validate HRMS Doctype
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost execute frappe.db.exists \
+            --args "['DocType','Employee']"
+
+      - name: Validate Helpdesk Doctype
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost execute frappe.db.exists \
+            --args "['DocType','HD Ticket']"
+
+      - name: Validate Builder Doctype
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost execute frappe.db.exists \
+            --args "['DocType','Builder Page']"
+
+      - name: Validate Insights Doctype
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost execute frappe.db.exists \
+            --args "['DocType','Insights Data Source']"
+
+      - name: Validate LMS Doctype
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site erp.localhost execute frappe.db.exists \
+            --args "['DocType','LMS Course']"
+
       - name: Validate Login Page
         run: |
           curl \
@@ -211,6 +316,7 @@ jobs:
             > login.html
 
           grep -q "Sign In" login.html
+
 
       - name: Validate Desk Route
         run: |
