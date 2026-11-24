@@ -1,101 +1,377 @@
-x-customizable-image: &customizable_image
-  # By default the image used only contains the `frappe` and `erpnext` apps.
-  # See https://github.com/frappe/frappe_docker/blob/main/docs/02-setup/02-build-setup.md#define-custom-apps
-  # about using custom images.
-  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
-  pull_policy: ${PULL_POLICY:-always}
-  restart: ${RESTART_POLICY:-unless-stopped}
 
-x-depends-on-configurator: &depends_on_configurator
-  depends_on:
-    configurator:
-      condition: service_completed_successfully
+x-custom-image: &custom-image
+  image: ${IMAGE:?Set IMAGE in .env}
+  platform: linux/amd64
+  restart: unless-stopped
 
-x-backend-defaults: &backend_defaults
-  <<: [*depends_on_configurator, *customizable_image]
-  volumes:
-    - sites:/home/frappe/frappe-bench/sites
+# Reusable named-volume mount definitions.
+# Each anchor represents ONE volume entry.
+x-sites-volume: &sites-volume
+  type: volume
+  source: sites
+  target: /home/frappe/frappe-bench/sites
+
+x-logs-volume: &logs-volume
+  type: volume
+  source: logs
+  target: /home/frappe/frappe-bench/logs
 
 services:
-  configurator:
-    <<: *backend_defaults
-    platform: linux/amd64
-    entrypoint:
-      - bash
-      - -c
-    # add redis_socketio for backward compatibility
-    command:
-      - >
-        ls -1 apps > sites/apps.txt;
-        bench set-config -g db_host $$DB_HOST;
-        bench set-config -gp db_port $$DB_PORT;
-        bench set-config -g redis_cache "redis://$$REDIS_CACHE";
-        bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
-        bench set-config -g redis_socketio "redis://$$REDIS_QUEUE";
-        bench set-config -gp socketio_port $$SOCKETIO_PORT;
-        bench set-config -g chromium_path /usr/lib/chromium/chromium-headless-shell;
-    environment:
-      DB_HOST: ${DB_HOST:-}
-      DB_PORT: ${DB_PORT:-}
-      REDIS_CACHE: ${REDIS_CACHE:-}
-      REDIS_QUEUE: ${REDIS_QUEUE:-}
-      SOCKETIO_PORT: 9000
-    depends_on: {}
-    restart: on-failure
 
+  # 1. Configure Frappe database and Redis connections
+  configurator:
+    <<: *custom-image
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -e
+
+        mkdir -p sites
+
+        if [ ! -f sites/common_site_config.json ]; then
+          echo "{}" > sites/common_site_config.json
+        fi
+
+        ls -1 apps > sites/apps.txt
+
+        bench set-config -g db_host "$$DB_HOST"
+        bench set-config -gp db_port "$$DB_PORT"
+        bench set-config -g redis_cache "redis://$$REDIS_CACHE"
+        bench set-config -g redis_queue "redis://$$REDIS_QUEUE"
+        bench set-config -g redis_socketio "redis://$$REDIS_QUEUE"
+        bench set-config -gp socketio_port "$$SOCKETIO_PORT"
+        bench set-config -g chromium_path /usr/lib/chromium/chromium-headless-shell
+
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      REDIS_CACHE: redis-cache:6379
+      REDIS_QUEUE: redis-queue:6379
+      SOCKETIO_PORT: "9000"
+
+    volumes:
+      - *sites-volume
+      - *logs-volume
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+
+    restart: "no"
+
+
+  
+  
+  # 2. Initialize NLTK data
+  nltk-init:
+    <<: *custom-image
+    user: "1000:1000"
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -e
+
+        chmod go-w /home/frappe
+
+        if [ ! -f /home/frappe/nltk_data/tokenizers/punkt_tab/english/README ]; then
+          echo "Downloading NLTK corpora..."
+
+          mkdir -p /home/frappe/nltk_data
+
+          /home/frappe/frappe-bench/env/bin/python3 -m nltk.downloader \
+            -d /home/frappe/nltk_data \
+            punkt \
+            punkt_tab \
+            averaged_perceptron_tagger \
+            averaged_perceptron_tagger_eng
+        else
+          echo "NLTK corpora already present."
+        fi
+
+    volumes:
+      - nltk-data:/home/frappe/nltk_data
+
+    restart: "no"
+
+
+  # 3. Create site only if it does not already exist
+  create-site:
+    <<: *custom-image
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -e
+
+        wait-for-it -t 120 db:3306
+        wait-for-it -t 120 redis-cache:6379
+        wait-for-it -t 120 redis-queue:6379
+
+        if [ -f "sites/$$SITE_NAME/site_config.json" ]; then
+          echo "Site $$SITE_NAME already exists. Skipping creation."
+        else
+          echo "Creating site $$SITE_NAME..."
+
+          bench new-site \
+            --mariadb-user-host-login-scope='%' \
+            --admin-password="$$ADMIN_PASS" \
+            --db-root-username=root \
+            --db-root-password="$$DB_ROOT_PASS" \
+            --install-app erpnext \
+            --install-app hrms \
+            --install-app helpdesk \
+            --install-app lms \
+            --install-app insights \
+            --install-app payments \
+            --install-app telephony \
+            --install-app builder \
+            --install-app oda_marketing \
+            --set-default "$$SITE_NAME"
+        fi
+
+    environment:
+      SITE_NAME: ${SITE_NAME:?Set SITE_NAME in .env}
+      ADMIN_PASS: ${ADMIN_PASS:?Set ADMIN_PASS in .env}
+      DB_ROOT_PASS: ${DB_ROOT_PASS:?Set DB_ROOT_PASS in .env}
+
+    volumes:
+      - *sites-volume
+      - *logs-volume
+
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+    restart: "no"
+
+
+  # 4. MariaDB database
+  db:
+    image: mariadb:11.8
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --innodb-snapshot-isolation=OFF
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:?Set DB_ROOT_PASS in .env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASS:?Set DB_ROOT_PASS in .env}
+      MARIADB_AUTO_UPGRADE: "1"
+
+    volumes:
+      - db-data:/var/lib/mysql
+
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 5s
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+
+  # 5. Redis queue
+  redis-queue:
+    image: redis:8.6-alpine
+    volumes:
+      - redis-queue-data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    restart: unless-stopped
+
+
+  # 6. Redis cache
+  redis-cache:
+    image: redis:8.6-alpine
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    restart: unless-stopped
+
+
+  # 7. Backend
   backend:
-    <<: *backend_defaults
-    platform: linux/amd64
+    <<: *custom-image
+
+    command:
+      - /home/frappe/frappe-bench/env/bin/gunicorn
+      - --chdir=/home/frappe/frappe-bench/sites
+      - --bind=0.0.0.0:8000
+      - --threads=${GUNICORN_THREADS:-4}
+      - --workers=${GUNICORN_WORKERS:-2}
+      - --worker-class=gthread
+      - --worker-tmp-dir=/dev/shm
+      - --timeout=${GUNICORN_TIMEOUT:-120}
+      - --preload
+      - --forwarded-allow-ips=*
+      - frappe.app:application
+
     environment:
       GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
       GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-120}
 
+    volumes:
+      - *sites-volume
+      - *logs-volume
+      - nltk-data:/home/frappe/nltk_data
+
+    depends_on:
+      create-site:
+        condition: service_completed_successfully
+      nltk-init:
+        condition: service_completed_successfully
+
+
+  # 8. Frontend
   frontend:
-    <<: *customizable_image
-    platform: linux/amd64
-    command:
-      - nginx-entrypoint.sh
+    <<: *custom-image
+    command: ["nginx-entrypoint.sh"]
+
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
-      NGINX_LISTEN_PORT: ${NGINX_LISTEN_PORT:-8080}
-      FRAPPE_SITE_NAME_HEADER: ${FRAPPE_SITE_NAME_HEADER:-$$host}
-      UPSTREAM_REAL_IP_ADDRESS: ${UPSTREAM_REAL_IP_ADDRESS:-127.0.0.1}
-      UPSTREAM_REAL_IP_HEADER: ${UPSTREAM_REAL_IP_HEADER:-X-Forwarded-For}
-      UPSTREAM_REAL_IP_RECURSIVE: ${UPSTREAM_REAL_IP_RECURSIVE:-off}
-      PROXY_READ_TIMEOUT: ${PROXY_READ_TIMEOUT:-120}
-      CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50m}
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-    depends_on:
-      - backend
-      - websocket
+      FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:?Set SITE_NAME in .env}
+      NGINX_LISTEN_PORT: "8080"
+      UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
+      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
+      UPSTREAM_REAL_IP_RECURSIVE: "off"
+      PROXY_READ_TIMEOUT: 120
+      CLIENT_MAX_BODY_SIZE: 50m
 
+    volumes:
+      - *sites-volume
+      - *logs-volume
+
+    ports:
+      - "${HTTP_PUBLISH_PORT:-8080}:8080"
+
+    depends_on:
+      backend:
+        condition: service_started
+      websocket:
+        condition: service_started
+
+
+  # 9. Websocket
   websocket:
-    <<: [*depends_on_configurator, *customizable_image]
-    platform: linux/amd64
+    <<: *custom-image
+
     command:
       - node
       - /home/frappe/frappe-bench/apps/frappe/socketio.js
+
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+
     volumes:
-      - sites:/home/frappe/frappe-bench/sites
+      - *sites-volume
+      - *logs-volume
 
+    depends_on:
+      create-site:
+        condition: service_completed_successfully
+
+
+  # 10. Short queue
   queue-short:
-    <<: *backend_defaults
-    platform: linux/amd64
-    command: bench worker --queue short,default
+    <<: *custom-image
 
+    command: ["bench", "worker", "--queue", "short,default"]
+
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+
+    volumes:
+      - *sites-volume
+      - *logs-volume
+      - nltk-data:/home/frappe/nltk_data
+
+    depends_on:
+      create-site:
+        condition: service_completed_successfully
+      nltk-init:
+        condition: service_completed_successfully
+
+
+  # 11. Long queue
   queue-long:
-    <<: *backend_defaults
-    platform: linux/amd64
-    command: bench worker --queue long,default,short
+    <<: *custom-image
 
+    command: ["bench", "worker", "--queue", "long,default,short"]
+
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+
+    volumes:
+      - *sites-volume
+      - *logs-volume
+      - nltk-data:/home/frappe/nltk_data
+
+    depends_on:
+      create-site:
+        condition: service_completed_successfully
+      nltk-init:
+        condition: service_completed_successfully
+
+
+  # 12. Scheduler
   scheduler:
-    <<: *backend_defaults
-    platform: linux/amd64
-    command: bench schedule
+    <<: *custom-image
 
-# ERPNext requires local assets access (Frappe does not)
+    command: ["bench", "schedule"]
+
+    volumes:
+      - *sites-volume
+      - *logs-volume
+
+    depends_on:
+      create-site:
+        condition: service_completed_successfully
+
+
+  # 13. Manual backup service
+  backup:
+    <<: *custom-image
+    profiles: ["manual"]
+
+    command:
+      - bench
+      - --site
+      - ${SITE_NAME:?Set SITE_NAME in .env}
+      - backup
+      - --with-files
+
+    volumes:
+      - *sites-volume
+      - *logs-volume
+
+    depends_on:
+      create-site:
+        condition: service_completed_successfully
+
+
+# Docker-managed named volumes
 volumes:
+  db-data:
+  redis-queue-data:
+  nltk-data:
   sites:
+  logs:
