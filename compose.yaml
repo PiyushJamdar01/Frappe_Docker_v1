@@ -64,9 +64,6 @@ services:
     restart: "no"
 
 
-  
-  
-  
   # 2. Initialize NLTK data
   nltk-init:
     <<: *custom-image
@@ -80,16 +77,19 @@ services:
 
         mkdir -p /home/frappe/nltk_data
         chown -R 1000:1000 /home/frappe/nltk_data
+        chmod 700 /home/frappe/nltk_data
 
         echo "Downloading NLTK corpora..."
 
-        /home/frappe/frappe-bench/env/bin/python3 -m nltk.downloader \
-          -d /home/frappe/nltk_data \
-          -q \
-          punkt \
-          punkt_tab \
-          averaged_perceptron_tagger \
-          averaged_perceptron_tagger_eng
+        su -s /bin/bash frappe -c '
+          /home/frappe/frappe-bench/env/bin/python3 -m nltk.downloader \
+            -d /home/frappe/nltk_data \
+            -q \
+            punkt \
+            punkt_tab \
+            averaged_perceptron_tagger \
+            averaged_perceptron_tagger_eng
+        '
 
         echo "NLTK corpora downloaded successfully."
 
@@ -99,8 +99,7 @@ services:
     restart: "no"
 
 
-
-  # 3. Create site only if it does not already exist
+  # 3. Create site if it does not exist and ensure Wiki is installed
   create-site:
     <<: *custom-image
     entrypoint: ["bash", "-c"]
@@ -131,8 +130,20 @@ services:
             --install-app telephony \
             --install-app builder \
             --install-app oda_marketing \
+            --install-app wiki \
             --set-default "$$SITE_NAME"
         fi
+
+        echo "Checking installed applications..."
+
+        if bench --site "$$SITE_NAME" list-apps --format text | grep -Fxq "wiki"; then
+          echo "Wiki is already installed on $$SITE_NAME."
+        else
+          echo "Installing Wiki on $$SITE_NAME..."
+          bench --site "$$SITE_NAME" install-app wiki
+        fi
+
+        echo "Wiki installation completed successfully."
 
     environment:
       SITE_NAME: ${SITE_NAME:?Set SITE_NAME in .env}
@@ -320,7 +331,7 @@ services:
 
     environment:
       FRAPPE_REDIS_CACHE: redis://redis-cache:6379
-      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+      FRAPPE_REDIS_QUEUE: redis-queue:6379
 
     volumes:
       - *sites-volume
