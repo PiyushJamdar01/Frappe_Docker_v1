@@ -159,6 +159,29 @@ jobs:
             up -d
 
       # --------------------------------------------------
+      # 9.1. Debug NLTK Init Failure
+      # --------------------------------------------------
+
+      - name: Debug NLTK Init Failure
+        if: always()
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            logs --no-color nltk-init || true
+
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            ps -a
+
+      # --------------------------------------------------
       # 10. Show running containers
       # --------------------------------------------------
 
