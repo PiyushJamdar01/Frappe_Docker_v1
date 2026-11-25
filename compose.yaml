@@ -66,36 +66,38 @@ services:
 
   
   
+  
   # 2. Initialize NLTK data
   nltk-init:
     <<: *custom-image
-    user: "1000:1000"
+    user: "0:0"
     entrypoint: ["bash", "-c"]
     command:
       - |
         set -e
 
-        chmod go-w /home/frappe
+        echo "Preparing NLTK data directory..."
 
-        if [ ! -f /home/frappe/nltk_data/tokenizers/punkt_tab/english/README ]; then
-          echo "Downloading NLTK corpora..."
+        mkdir -p /home/frappe/nltk_data
+        chown -R 1000:1000 /home/frappe/nltk_data
 
-          mkdir -p /home/frappe/nltk_data
+        echo "Downloading NLTK corpora..."
 
-          /home/frappe/frappe-bench/env/bin/python3 -m nltk.downloader \
-            -d /home/frappe/nltk_data \
-            punkt \
-            punkt_tab \
-            averaged_perceptron_tagger \
-            averaged_perceptron_tagger_eng
-        else
-          echo "NLTK corpora already present."
-        fi
+        /home/frappe/frappe-bench/env/bin/python3 -m nltk.downloader \
+          -d /home/frappe/nltk_data \
+          -q \
+          punkt \
+          punkt_tab \
+          averaged_perceptron_tagger \
+          averaged_perceptron_tagger_eng
+
+        echo "NLTK corpora downloaded successfully."
 
     volumes:
       - nltk-data:/home/frappe/nltk_data
 
     restart: "no"
+
 
 
   # 3. Create site only if it does not already exist
