@@ -203,22 +203,7 @@ jobs:
         run: |
           sleep 60
 
-      # --------------------------------------------------
-      # 12. Create test site
-      # --------------------------------------------------
-
-      - name: Create Test Site
-        run: |
-          docker compose \
-            --env-file .env \
-            -f compose.yaml \
-            -f overrides/compose.mariadb.yaml \
-            -f overrides/compose.redis.yaml \
-            -f overrides/compose.noproxy.yaml \
-            exec -T backend \
-            bench new-site "$SITE_NAME" \
-            --mariadb-root-password "$DB_ROOT_PASS" \
-            --admin-password "$ADMIN_PASS"
+    
 
       # --------------------------------------------------
       # 13. Verify Redis configuration
