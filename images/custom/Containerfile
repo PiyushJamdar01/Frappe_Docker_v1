@@ -38,6 +38,7 @@ RUN useradd -u 1000 -g 0 -d /home/frappe -ms /bin/bash frappe \
     less \
     libpq-dev \
     postgresql-client \
+    procps \
     wait-for-it \
     jq \
     media-types \
