@@ -34,5 +34,9 @@
   {
     "url": "https://github.com/Avishkar-Kabadi-ODA/oda_marketing",
     "branch": "stage"
+  },
+  {
+  "url": "https://github.com/frappe/wiki",
+  "branch": "version-3"
   }
 ]

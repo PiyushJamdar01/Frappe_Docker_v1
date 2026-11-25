@@ -11,12 +11,69 @@ jobs:
   validate:
     runs-on: ubuntu-latest
 
+    # Values are fetched from GitHub Actions Variables and Secrets.
+    env:
+      IMAGE: ${{ vars.IMAGE }}
+      SITE_NAME: ${{ vars.SITE_NAME }}
+      HTTP_PUBLISH_PORT: ${{ vars.HTTP_PUBLISH_PORT }}
+      GUNICORN_THREADS: ${{ vars.GUNICORN_THREADS }}
+      GUNICORN_WORKERS: ${{ vars.GUNICORN_WORKERS }}
+      GUNICORN_TIMEOUT: ${{ vars.GUNICORN_TIMEOUT }}
+
+      ADMIN_PASS: ${{ secrets.ADMIN_PASS }}
+      DB_ROOT_PASS: ${{ secrets.DB_ROOT_PASS }}
+
     steps:
+      # --------------------------------------------------
+      # 1. Checkout repository
+      # --------------------------------------------------
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # --------------------------------------------------
+      # 2. Validate required GitHub variables and secrets
+      # --------------------------------------------------
+
+      - name: Validate GitHub Configuration
+        run: |
+          set -e
+
+          if [ -z "$IMAGE" ]; then
+            echo "ERROR: IMAGE is not configured in GitHub Variables."
+            exit 1
+          fi
+
+          if [ -z "$SITE_NAME" ]; then
+            echo "ERROR: SITE_NAME is not configured in GitHub Variables."
+            exit 1
+          fi
+
+          if [ -z "$ADMIN_PASS" ]; then
+            echo "ERROR: ADMIN_PASS is not configured in GitHub Secrets."
+            exit 1
+          fi
+
+          if [ -z "$DB_ROOT_PASS" ]; then
+            echo "ERROR: DB_ROOT_PASS is not configured in GitHub Secrets."
+            exit 1
+          fi
+
+          echo "Required GitHub configuration is available."
+
+          echo "Docker image: $IMAGE"
+          echo "Site name: $SITE_NAME"
+
+      # --------------------------------------------------
+      # 3. Set up Docker Buildx
+      # --------------------------------------------------
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      # --------------------------------------------------
+      # 4. Build custom Unity image
+      # --------------------------------------------------
 
       - name: Build Unity Image
         run: |
@@ -25,20 +82,35 @@ jobs:
             --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
             --build-arg=FRAPPE_BRANCH=v16.60.2 \
             --secret=id=apps_json,src=apps.json \
-            --tag=piyush/erpnext-custom:16 \
+            --tag="$IMAGE" \
             --file=images/custom/Containerfile .
+
+      # --------------------------------------------------
+      # 5. Verify image exists
+      # --------------------------------------------------
 
       - name: Verify Image Exists
         run: |
-          docker images | grep piyush/erpnext-custom
+          docker image inspect "$IMAGE" > /dev/null
+
+          echo "Image successfully built:"
+          echo "$IMAGE"
+
+      # --------------------------------------------------
+      # 6. Verify Bench exists
+      # --------------------------------------------------
 
       - name: Verify Bench Exists
         run: |
-          docker run --rm piyush/erpnext-custom:16 bench version
+          docker run --rm "$IMAGE" bench version
+
+      # --------------------------------------------------
+      # 7. Verify installed apps inside image
+      # --------------------------------------------------
 
       - name: Verify Installed Apps In Image
         run: |
-          docker run --rm piyush/erpnext-custom:16 bench version | tee versions.txt
+          docker run --rm "$IMAGE" bench version | tee versions.txt
 
           grep frappe versions.txt
           grep erpnext versions.txt
@@ -49,17 +121,32 @@ jobs:
           grep lms versions.txt
           grep payments versions.txt
           grep telephony versions.txt
+          grep wiki versions.txt
+
+      # --------------------------------------------------
+      # 8. Create .env from GitHub Variables and Secrets
+      # --------------------------------------------------
 
       - name: Create Environment File
         run: |
+          umask 077
+
           cat > .env <<EOF
-          ERPNEXT_VERSION=v16.60.0
-          DB_PASSWORD=123
-          HTTP_PUBLISH_PORT=8080
-          CUSTOM_IMAGE=piyush/erpnext-custom
-          CUSTOM_TAG=16
-          PULL_POLICY=never
+          IMAGE=${IMAGE}
+          SITE_NAME=${SITE_NAME}
+          ADMIN_PASS=${ADMIN_PASS}
+          DB_ROOT_PASS=${DB_ROOT_PASS}
+          HTTP_PUBLISH_PORT=${HTTP_PUBLISH_PORT}
+          GUNICORN_THREADS=${GUNICORN_THREADS}
+          GUNICORN_WORKERS=${GUNICORN_WORKERS}
+          GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT}
           EOF
+
+          echo ".env file created successfully."
+
+      # --------------------------------------------------
+      # 9. Start Docker Compose stack
+      # --------------------------------------------------
 
       - name: Start Compose Stack
         run: |
@@ -71,13 +158,31 @@ jobs:
             -f overrides/compose.noproxy.yaml \
             up -d
 
+      # --------------------------------------------------
+      # 10. Show running containers
+      # --------------------------------------------------
+
       - name: Show Running Containers
         run: |
-          docker compose ps
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            ps
+
+      # --------------------------------------------------
+      # 11. Wait for backend startup
+      # --------------------------------------------------
 
       - name: Wait For Backend Startup
         run: |
           sleep 60
+
+      # --------------------------------------------------
+      # 12. Create test site
+      # --------------------------------------------------
 
       - name: Create Test Site
         run: |
@@ -88,9 +193,13 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench new-site erp.localhost \
-            --mariadb-root-password 123 \
-            --admin-password Admin@123
+            bench new-site "$SITE_NAME" \
+            --mariadb-root-password "$DB_ROOT_PASS" \
+            --admin-password "$ADMIN_PASS"
+
+      # --------------------------------------------------
+      # 13. Verify Redis configuration
+      # --------------------------------------------------
 
       - name: Verify Redis Configuration
         run: |
@@ -103,6 +212,10 @@ jobs:
             exec -T backend \
             cat /home/frappe/frappe-bench/sites/common_site_config.json
 
+      # --------------------------------------------------
+      # 14. Install ERPNext
+      # --------------------------------------------------
+
       - name: Install ERPNext
         run: |
           docker compose \
@@ -112,7 +225,11 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost install-app erpnext
+            bench --site "$SITE_NAME" install-app erpnext
+
+      # --------------------------------------------------
+      # 15. Install HRMS
+      # --------------------------------------------------
 
       - name: Install HRMS
         run: |
@@ -123,7 +240,11 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost install-app hrms
+            bench --site "$SITE_NAME" install-app hrms
+
+      # --------------------------------------------------
+      # 16. Install Helpdesk
+      # --------------------------------------------------
 
       - name: Install Helpdesk
         run: |
@@ -134,7 +255,11 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost install-app helpdesk
+            bench --site "$SITE_NAME" install-app helpdesk
+
+      # --------------------------------------------------
+      # 17. Install Builder
+      # --------------------------------------------------
 
       - name: Install Builder
         run: |
@@ -145,7 +270,11 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost install-app builder
+            bench --site "$SITE_NAME" install-app builder
+
+      # --------------------------------------------------
+      # 18. Install Insights
+      # --------------------------------------------------
 
       - name: Install Insights
         run: |
@@ -156,7 +285,11 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost install-app insights
+            bench --site "$SITE_NAME" install-app insights
+
+      # --------------------------------------------------
+      # 19. Install LMS
+      # --------------------------------------------------
 
       - name: Install LMS
         run: |
@@ -167,7 +300,26 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost install-app lms
+            bench --site "$SITE_NAME" install-app lms
+
+      # --------------------------------------------------
+      # 20.1. Install Wiki
+      # --------------------------------------------------
+
+      - name: Install Wiki
+        run: |
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            exec -T backend \
+            bench --site "$SITE_NAME" install-app wiki
+
+      # --------------------------------------------------
+      # 20. Set default homepage to Desk
+      # --------------------------------------------------
 
       - name: Set Default Homepage To Desk
         run: |
@@ -178,7 +330,7 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost execute frappe.db.set_single_value \
+            bench --site "$SITE_NAME" execute frappe.db.set_single_value \
             --args "['Website Settings','home_page','desk']"
 
           docker compose \
@@ -188,7 +340,11 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost clear-cache
+            bench --site "$SITE_NAME" clear-cache
+
+      # --------------------------------------------------
+      # 21. Verify homepage
+      # --------------------------------------------------
 
       - name: Verify Homepage Is Desk
         run: |
@@ -199,8 +355,12 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost execute frappe.db.get_single_value \
+            bench --site "$SITE_NAME" execute frappe.db.get_single_value \
             --args "['Website Settings','home_page']"
+
+      # --------------------------------------------------
+      # 22. List installed apps
+      # --------------------------------------------------
 
       - name: List Installed Apps
         run: |
@@ -211,7 +371,11 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost list-apps
+            bench --site "$SITE_NAME" list-apps
+
+      # --------------------------------------------------
+      # 23. Validate site health
+      # --------------------------------------------------
 
       - name: Validate Site Health
         run: |
@@ -222,7 +386,11 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost doctor
+            bench --site "$SITE_NAME" doctor
+
+      # --------------------------------------------------
+      # 24. Full stack migration test
+      # --------------------------------------------------
 
       - name: Full Stack Migration Test
         run: |
@@ -233,7 +401,11 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost migrate
+            bench --site "$SITE_NAME" migrate
+
+      # --------------------------------------------------
+      # 25. Validate installed apps after migration
+      # --------------------------------------------------
 
       - name: Validate Installed Apps After Migration
         run: |
@@ -244,7 +416,11 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost list-apps
+            bench --site "$SITE_NAME" list-apps
+
+      # --------------------------------------------------
+      # 26. Validate ERPNext DocType
+      # --------------------------------------------------
 
       - name: Validate ERPNext Doctype
         run: |
@@ -255,8 +431,12 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost execute frappe.db.exists \
+            bench --site "$SITE_NAME" execute frappe.db.exists \
             --args "['DocType','Sales Order']"
+
+      # --------------------------------------------------
+      # 27. Validate HRMS DocType
+      # --------------------------------------------------
 
       - name: Validate HRMS Doctype
         run: |
@@ -267,8 +447,12 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost execute frappe.db.exists \
+            bench --site "$SITE_NAME" execute frappe.db.exists \
             --args "['DocType','Employee']"
+
+      # --------------------------------------------------
+      # 28. Validate Helpdesk DocType
+      # --------------------------------------------------
 
       - name: Validate Helpdesk Doctype
         run: |
@@ -279,8 +463,12 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost execute frappe.db.exists \
+            bench --site "$SITE_NAME" execute frappe.db.exists \
             --args "['DocType','HD Ticket']"
+
+      # --------------------------------------------------
+      # 29. Validate Builder DocType
+      # --------------------------------------------------
 
       - name: Validate Builder Doctype
         run: |
@@ -291,8 +479,12 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost execute frappe.db.exists \
+            bench --site "$SITE_NAME" execute frappe.db.exists \
             --args "['DocType','Builder Page']"
+
+      # --------------------------------------------------
+      # 30. Validate Insights DocType
+      # --------------------------------------------------
 
       - name: Validate Insights Doctype
         run: |
@@ -303,8 +495,12 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost execute frappe.db.exists \
+            bench --site "$SITE_NAME" execute frappe.db.exists \
             --args "['DocType','Insights Data Source']"
+
+      # --------------------------------------------------
+      # 31. Validate LMS DocType
+      # --------------------------------------------------
 
       - name: Validate LMS Doctype
         run: |
@@ -315,19 +511,26 @@ jobs:
             -f overrides/compose.redis.yaml \
             -f overrides/compose.noproxy.yaml \
             exec -T backend \
-            bench --site erp.localhost execute frappe.db.exists \
+            bench --site "$SITE_NAME" execute frappe.db.exists \
             --args "['DocType','LMS Course']"
+
+      # --------------------------------------------------
+      # 32. Validate login page
+      # --------------------------------------------------
 
       - name: Validate Login Page
         run: |
           curl \
             --fail \
-            -H "Host: erp.localhost" \
-            http://localhost:8080/login \
+            -H "Host: $SITE_NAME" \
+            "http://localhost:${HTTP_PUBLISH_PORT:-8080}/login" \
             > login.html
 
           grep -q "Sign In" login.html
 
+      # --------------------------------------------------
+      # 33. Validate Desk route
+      # --------------------------------------------------
 
       - name: Validate Desk Route
         run: |
@@ -337,8 +540,8 @@ jobs:
 
           for i in $(seq 1 30); do
             HTTP_CODE=$(curl -L -sS -o desk.html -w "%{http_code}" \
-              -H "Host: erp.localhost" \
-              http://localhost:8080/app/ || true)
+              -H "Host: $SITE_NAME" \
+              "http://localhost:${HTTP_PUBLISH_PORT:-8080}/app/" || true)
 
             echo "Attempt $i HTTP Status: $HTTP_CODE"
 
@@ -363,19 +566,67 @@ jobs:
 
           grep -q "<!DOCTYPE html>" desk.html
 
+      # --------------------------------------------------
+      # 34. Login to Docker Hub
+      # --------------------------------------------------
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # --------------------------------------------------
+      # 35. Push image to Docker Hub
+      # This runs only if all previous validation steps pass.
+      # --------------------------------------------------
+
+      - name: Push Image to Docker Hub
+        run: |
+          docker push "$IMAGE"
+
+          echo "Successfully pushed image:"
+          echo "$IMAGE"
+
+      # --------------------------------------------------
+      # 36. Show logs if any step fails
+      # --------------------------------------------------
+
       - name: Show Container Logs On Failure
         if: failure()
         run: |
           echo "===== BACKEND LOGS ====="
-          docker compose logs --tail=200 backend
+
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            logs --tail=200 backend || true
 
           echo "===== FRONTEND LOGS ====="
-          docker compose logs --tail=200 frontend
+
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            logs --tail=200 frontend || true
 
           echo "===== CONFIGURATOR LOGS ====="
-          docker compose logs --tail=200 configurator
+
+          docker compose \
+            --env-file .env \
+            -f compose.yaml \
+            -f overrides/compose.mariadb.yaml \
+            -f overrides/compose.redis.yaml \
+            -f overrides/compose.noproxy.yaml \
+            logs --tail=200 configurator || true
 
           echo "===== DESK RESPONSE ====="
+
           curl -L -v \
-            -H "Host: erp.localhost" \
-            http://localhost:8080/app/ || true
+            -H "Host: $SITE_NAME" \
+            "http://localhost:${HTTP_PUBLISH_PORT:-8080}/app/" || true

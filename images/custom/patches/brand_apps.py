@@ -52,6 +52,7 @@ replace_once(
 
 # Add Workspace and Company shortcuts to the New Apps screen
 # Add Workspace and Company shortcuts to the New Apps screen
+# Add custom workspace shortcuts to the New Apps screen
 replace_once(
     "frappe/frappe/desk/page/desktop/desktop.js",
     "\t\t$('[data-toggle=\"tooltip\"]').tooltip({ placement: \"bottom\" });",
@@ -61,7 +62,7 @@ replace_once(
 \t\t\t{ label: "Assets", route: "/app/assets" },
 \t\t\t{ label: "Projects", route: "/app/projects" },
 \t\t\t{ label: "ERPNext Settings", route: "/app/erpnext-settings" },
-\t\t\t{ label: "Company", route: "/app/company" },
+\t\t\t{ label: "Organization", route: "/app/organization" },
 \t\t];
 
 \t\tworkspace_shortcuts.forEach((item) => {
@@ -70,6 +71,5 @@ replace_once(
 
 \t\t$('[data-toggle="tooltip"]').tooltip({ placement: "bottom" });"""
 )
-
 
 print("ODA application branding and Apps screen shortcuts applied successfully.")
