@@ -115,10 +115,7 @@ ARG FRAPPE_BRANCH=v16.60.2
 ARG FRAPPE_PATH=https://github.com/frappe/frappe
 ARG CACHE_BUST=""
 
-# Copy ODA branding patch into the builder stage
-COPY --chown=frappe:0 images/custom/patches/brand_apps.py /tmp/brand_apps.py
 
-# Install Frappe and applications, apply custom fixes and ODA branding
 RUN --mount=type=secret,id=apps_json,target=/opt/frappe/apps.json,uid=1000,gid=0 \
   : "${CACHE_BUST}" && \
   export APP_INSTALL_ARGS="" && \
@@ -134,7 +131,6 @@ RUN --mount=type=secret,id=apps_json,target=/opt/frappe/apps.json,uid=1000,gid=0
     --verbose \
     /home/frappe/frappe-bench && \
   cd /home/frappe/frappe-bench && \
-  python /tmp/brand_apps.py && \
   grep -Fq 'port_offset = frappe.conf.webserver_port - 8000' \
     apps/frappe/frappe/studio/doctype/studio_app/studio_app.py && \
   sed -i \

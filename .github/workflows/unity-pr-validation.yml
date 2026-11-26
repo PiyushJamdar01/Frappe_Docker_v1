@@ -203,7 +203,7 @@ jobs:
         run: |
           sleep 60
 
-    
+
 
       # --------------------------------------------------
       # 13. Verify Redis configuration
@@ -220,110 +220,6 @@ jobs:
             exec -T backend \
             cat /home/frappe/frappe-bench/sites/common_site_config.json
 
-      # --------------------------------------------------
-      # 14. Install ERPNext
-      # --------------------------------------------------
-
-      - name: Install ERPNext
-        run: |
-          docker compose \
-            --env-file .env \
-            -f compose.yaml \
-            -f overrides/compose.mariadb.yaml \
-            -f overrides/compose.redis.yaml \
-            -f overrides/compose.noproxy.yaml \
-            exec -T backend \
-            bench --site "$SITE_NAME" install-app erpnext
-
-      # --------------------------------------------------
-      # 15. Install HRMS
-      # --------------------------------------------------
-
-      - name: Install HRMS
-        run: |
-          docker compose \
-            --env-file .env \
-            -f compose.yaml \
-            -f overrides/compose.mariadb.yaml \
-            -f overrides/compose.redis.yaml \
-            -f overrides/compose.noproxy.yaml \
-            exec -T backend \
-            bench --site "$SITE_NAME" install-app hrms
-
-      # --------------------------------------------------
-      # 16. Install Helpdesk
-      # --------------------------------------------------
-
-      - name: Install Helpdesk
-        run: |
-          docker compose \
-            --env-file .env \
-            -f compose.yaml \
-            -f overrides/compose.mariadb.yaml \
-            -f overrides/compose.redis.yaml \
-            -f overrides/compose.noproxy.yaml \
-            exec -T backend \
-            bench --site "$SITE_NAME" install-app helpdesk
-
-      # --------------------------------------------------
-      # 17. Install Builder
-      # --------------------------------------------------
-
-      - name: Install Builder
-        run: |
-          docker compose \
-            --env-file .env \
-            -f compose.yaml \
-            -f overrides/compose.mariadb.yaml \
-            -f overrides/compose.redis.yaml \
-            -f overrides/compose.noproxy.yaml \
-            exec -T backend \
-            bench --site "$SITE_NAME" install-app builder
-
-      # --------------------------------------------------
-      # 18. Install Insights
-      # --------------------------------------------------
-
-      - name: Install Insights
-        run: |
-          docker compose \
-            --env-file .env \
-            -f compose.yaml \
-            -f overrides/compose.mariadb.yaml \
-            -f overrides/compose.redis.yaml \
-            -f overrides/compose.noproxy.yaml \
-            exec -T backend \
-            bench --site "$SITE_NAME" install-app insights
-
-      # --------------------------------------------------
-      # 19. Install LMS
-      # --------------------------------------------------
-
-      - name: Install LMS
-        run: |
-          docker compose \
-            --env-file .env \
-            -f compose.yaml \
-            -f overrides/compose.mariadb.yaml \
-            -f overrides/compose.redis.yaml \
-            -f overrides/compose.noproxy.yaml \
-            exec -T backend \
-            bench --site "$SITE_NAME" install-app lms
-
-      # --------------------------------------------------
-      # 20.1. Install Wiki
-      # --------------------------------------------------
-
-      - name: Install Wiki
-        run: |
-          docker compose \
-            --env-file .env \
-            -f compose.yaml \
-            -f overrides/compose.mariadb.yaml \
-            -f overrides/compose.redis.yaml \
-            -f overrides/compose.noproxy.yaml \
-            exec -T backend \
-            bench --site "$SITE_NAME" install-app wiki
 
       # --------------------------------------------------
       # 20. Set default homepage to Desk
